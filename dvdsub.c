@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <inttypes.h>
 
 #define BUFFER_LENGTH 64
 
@@ -13,20 +15,59 @@ void printbuffer(unsigned char *buffer, int len)
 
 void read_buff(unsigned char *buffer, FILE *vidfile, int bytes, int *buffpos )
 {
+	size_t readlen;
 	if(bytes > BUFFER_LENGTH)
 	{
 		printf("ERROR buffer too short\n");
 		return;
 	}
-	fread(buffer, bytes, 1, vidfile);
+
+	readlen = fread(buffer, sizeof(char), bytes, vidfile);
+	if(readlen != bytes)
+	{
+		printf("ERROR File not read properly!\n");
+		exit(1);
+	}
 	*buffpos = bytes;
+}
+
+void read_buff_append(unsigned char *buffer, FILE *vidfile, int bytes, int *buffpos )
+{
+	if(bytes + *buffpos > BUFFER_LENGTH)
+	{
+		printf("ERROR buffer too short\n");
+		return;	
+	}
+
+	unsigned char tempbuff[BUFFER_LENGTH - *buffpos + 1];
+	size_t readlen;
+	int i = 0;
+
+	readlen = fread(tempbuff, sizeof(char), bytes, vidfile);
+	if(readlen != bytes)
+	{
+		printf("ERROR File not read properly!\n");
+		exit(1);
+	}
+
+	while(i < bytes)
+	{
+		buffer[*buffpos] = tempbuff[i];
+		*buffpos += 1;
+		i++;
+	}
+}
+
+void skipbytes(FILE *vidfile, int bytes)
+{
+	fseek(vidfile, bytes, SEEK_CUR);
 }
 
 void readdata(FILE *vidfile, unsigned char *buffer)
 {
 	int i;
 	uint16_t packetlen;
-	int buffpos = 0;
+	int buffpos = 0; //first empty position in buffer
 
 	for(i = 0; i < 100000; ++i) //arbitrarily chosen value 
 	{
@@ -51,6 +92,10 @@ void readdata(FILE *vidfile, unsigned char *buffer)
 			if(buffer[3] == 0xbd)
 			{
 				printf("Private stream 1\n");
+				read_buff_append(buffer, vidfile, 2, &buffpos);
+				packetlen = (buffer[4] << 8) | buffer[5];
+				printf("Packet length: %" PRIu16 "\n", packetlen);
+				skipbytes(vidfile, 2);
 				continue;
 			}
 			else if(buffer[3] == 0xbe)
@@ -97,8 +142,6 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 	readdata(vidfile, buffer);
-	printbuffer(buffer, 4);
-
 
 	fclose (vidfile);
 	return 0;
