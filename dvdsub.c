@@ -66,7 +66,7 @@ void skipbytes(FILE *vidfile, int bytes)
 		printf("ERROR failed skipbytes\n");
 }
 
-void process_spu(FILE *vidfile)
+void process_spu(FILE *vidfile, uint16_t packetlen)
 {
 	uint16_t size_spu, size_data;
 	unsigned char spu_buffer[SPU_BUFFER_LENGTH];
@@ -74,6 +74,9 @@ void process_spu(FILE *vidfile)
 	unsigned char spu_ctrlbuff[SPU_BUFFER_LENGTH];
 	int spu_buffpos = 0, spu_datapos = 0, spu_ctrlpos = 0;
 	int data_start, control_start;
+
+	unsigned char tempbuff[SPU_BUFFER_LENGTH];
+	int tempbuff_pos;
 
 	//First 2 bytes - size of total subpicture packet
 	read_buff(spu_buffer, vidfile, 2, &spu_buffpos);
@@ -95,11 +98,20 @@ void process_spu(FILE *vidfile)
 		printf("ERROR spu data size incorrect\n");
 		return;
 	}
+	spu_data = (unsigned char *) malloc( size_data ); 
 
 	//read packet data to spu_data
 	data_start = ftell(vidfile);
-	spu_data = (unsigned char *) malloc( size_data ); 
-	read_buff(spu_data, vidfile, size_data - 4, &spu_datapos);
+
+	//for Debugging only
+	read_buff(tempbuff, vidfile, size_spu - 4, &tempbuff_pos);
+	printbuffer(tempbuff, tempbuff_pos);
+	skipbytes(vidfile, (4 - size_spu));
+
+	if(size_data > packetlen)
+		read_buff(spu_data, vidfile, packetlen - 4, &spu_datapos);
+	else
+		read_buff(spu_data, vidfile, size_data - 4, &spu_datapos);
 	printbuffer(spu_data, spu_datapos);
 	
 	//process control packet
@@ -167,8 +179,9 @@ void process_spu(FILE *vidfile)
 				default	 : 	printf("Unknown command in spu control packet\n");	 
 			}
 		}
+		prevoff = offset;
+		printbuffer(spu_ctrlbuff, spu_ctrlpos);
 	}
-	printbuffer(spu_ctrlbuff, spu_ctrlpos);
 
 	free(spu_data);
 }
@@ -222,7 +235,7 @@ void readdata(FILE *vidfile, unsigned char *buffer)
 				if( substream_id >= 0x20 && substream_id < 0x40)
 				{
 					printf("Subpictures found!\n");
-					process_spu(vidfile);
+					process_spu(vidfile, packetlen);
 				}
 				
 				continue;
