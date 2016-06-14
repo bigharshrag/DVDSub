@@ -105,14 +105,21 @@ void process_spu(FILE *vidfile, uint16_t packetlen)
 
 	//for Debugging only
 	read_buff(tempbuff, vidfile, size_spu - 4, &tempbuff_pos);
-	printbuffer(tempbuff, tempbuff_pos);
+	// printbuffer(tempbuff, tempbuff_pos);
 	skipbytes(vidfile, (4 - size_spu));
 
 	if(size_data > packetlen)
-		read_buff(spu_data, vidfile, packetlen - 4, &spu_datapos);
+	{
+		//remaining data in future packets
+		// read_buff(spu_data, vidfile, packetlen - 4, &spu_datapos);
+		// printbuffer(spu_data, spu_datapos);
+		printf("Rejecting packet\n");
+		free(spu_data);
+		return;
+	}
 	else
 		read_buff(spu_data, vidfile, size_data - 4, &spu_datapos);
-	printbuffer(spu_data, spu_datapos);
+	// printbuffer(spu_data, spu_datapos);
 	
 	//process control packet
 	uint16_t date, offset, prevoff = -1, parasize;
@@ -139,7 +146,10 @@ void process_spu(FILE *vidfile, uint16_t packetlen)
 			switch(command)
 			{
 				case 0x01:	//Display sequence
+							// printf("Start time: %" PRIu16 "\n", ((date << 10) / 90));
+							break;	
 				case 0x02:	//Stop Display - Use not clear
+							// printf("Stop time: %" PRIu16 "\n", ((date << 10) / 90));	
 							break;
 				case 0x03:	//SET_COLOR
 							read_buff_append(spu_ctrlbuff, vidfile, 2, &spu_ctrlpos);
@@ -155,6 +165,7 @@ void process_spu(FILE *vidfile, uint16_t packetlen)
 							contrast[2] = (spu_ctrlbuff[spu_ctrlpos - 1] & 0xf0) >> 4;
 							contrast[3] = spu_ctrlbuff[spu_ctrlpos - 1] & 0x0f;
 							break;
+				case 0x85:
 				case 0x05:	//SET_DAREA
 							read_buff_append(spu_ctrlbuff, vidfile, 6, &spu_ctrlpos);
 							coord[0] = ((spu_ctrlbuff[spu_ctrlpos - 6] << 8) | (spu_ctrlbuff[spu_ctrlpos - 5] & 0xf0)) >> 4 ; //starting x coordinate
@@ -200,6 +211,11 @@ void readdata(FILE *vidfile, unsigned char *buffer)
 		if(buffer[0] == 0x00 && buffer[1] == 0x00 && buffer[2] == 0x01 && buffer[3] == 0xba)
 		{
 			// printf("PACK Header\n");
+			skipbytes(vidfile, 9);
+			uint8_t temp, stuffing;
+			fread(&temp, sizeof(char), 1, vidfile);
+			stuffing = temp & 0x07;
+			skipbytes(vidfile, stuffing);
 			continue;
 		}
 		//PES Header
@@ -235,7 +251,12 @@ void readdata(FILE *vidfile, unsigned char *buffer)
 				if( substream_id >= 0x20 && substream_id < 0x40)
 				{
 					printf("Subpictures found!\n");
-					process_spu(vidfile, packetlen);
+					//I've found that packetlen includes header extension (subtract byte 6-8 + headerlen + substream_id)
+					process_spu(vidfile, packetlen - 4 - headerlen);
+				}
+				else
+				{
+					skipbytes(vidfile, packetlen - 4 - headerlen);
 				}
 				
 				continue;
